@@ -1,0 +1,35 @@
+{
+  "grammars": [
+    {
+      "name": "fe",
+      "camelcase": "Fe",
+      "scope": "source.fe",
+      "file-types": [
+        "fe"
+      ],
+      "injection-regex": "^fe$"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "Fe language grammar",
+    "authors": [
+      {
+        "name": "Fe Language Team",
+        "url": "https://github.com/fe-lang/"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/fe-lang/tree-sitter-fe"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": true,
+    "node": true,
+    "python": true,
+    "rust": true,
+    "swift": true
+  }
+}
