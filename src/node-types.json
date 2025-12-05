@@ -16,10 +16,6 @@
         "named": true
       },
       {
-        "type": "empty_statement",
-        "named": true
-      },
-      {
         "type": "enum_item",
         "named": true
       },
@@ -1527,11 +1523,6 @@
         }
       ]
     }
-  },
-  {
-    "type": "empty_statement",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "enum_item",

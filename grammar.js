@@ -146,7 +146,28 @@ module.exports = grammar({
     [$.type_parameters, $.for_lifetimes],
     [$.array_expression],
     [$.visibility_modifier],
-    [$.visibility_modifier, $.scoped_identifier, $.scoped_type_identifier],
+    // Semicolon-free ambiguities
+    [$.function_modifiers, $._expression_except_range],
+    [$.extern_modifier],
+    [$.generic_function, $.generic_type_with_turbofish, $._expression_except_range, $.scoped_identifier, $.scoped_type_identifier_in_expression_position],
+    // Additional conflict for primitive types used in paths
+    [$._expression_except_range, $.scoped_identifier, $.scoped_type_identifier_in_expression_position],
+    [$.foreign_mod_item],
+    [$.foreign_mod_item, $.function_modifiers],
+    [$._expression_except_range, $.macro_invocation],
+    [$.expression_statement, $.block],
+    [$.impl_item, $.never_type],
+    [$._type, $.macro_invocation],
+    [$.impl_item, $._type],
+    [$.impl_item],
+    [$._pattern, $.range_pattern],
+    [$._pattern, $.macro_invocation],
+    [$._pattern, $.tuple_struct_pattern],
+    [$._pattern, $.struct_pattern],
+    [$.mod_item],
+    [$.struct_item],
+    [$.type_item, $.associated_type],
+    [$.range_pattern],
   ],
 
   word: ($) => $.identifier,
@@ -156,17 +177,14 @@ module.exports = grammar({
 
     _statement: ($) => choice($.expression_statement, $._declaration_statement),
 
-    empty_statement: (_) => ";",
-
     expression_statement: ($) =>
-      choice(seq($._expression, ";"), prec(1, $._expression_ending_with_block)),
+      choice($._expression, prec(1, $._expression_ending_with_block)),
 
     _declaration_statement: ($) =>
       choice(
         $.const_item,
         $.macro_invocation,
         $.macro_definition,
-        $.empty_statement,
         $.attribute_item,
         $.inner_attribute_item,
         $.mod_item,
@@ -353,14 +371,14 @@ module.exports = grammar({
         optional($.visibility_modifier),
         "mod",
         field("name", $.identifier),
-        choice(";", field("body", $.declaration_list)),
+        optional(field("body", $.declaration_list)),
       ),
 
     foreign_mod_item: ($) =>
       seq(
         optional($.visibility_modifier),
         $.extern_modifier,
-        choice(";", field("body", $.declaration_list)),
+        optional(field("body", $.declaration_list)),
       ),
 
     declaration_list: ($) => seq("{", repeat($._declaration_statement), "}"),
@@ -371,18 +389,8 @@ module.exports = grammar({
         "struct",
         field("name", $._type_identifier),
         field("type_parameters", optional($.type_parameters)),
-        choice(
-          seq(
-            optional($.where_clause),
-            field("body", $.field_declaration_list),
-          ),
-          seq(
-            field("body", $.ordered_field_declaration_list),
-            optional($.where_clause),
-            ";",
-          ),
-          ";",
-        ),
+        optional($.where_clause),
+        optional(field("body", choice($.field_declaration_list, $.ordered_field_declaration_list))),
       ),
 
     union_item: ($) =>
@@ -458,14 +466,13 @@ module.exports = grammar({
       ),
 
     extern_crate_declaration: ($) =>
-      seq(
+      prec(1, seq(
         optional($.visibility_modifier),
         "extern",
         $.crate,
         field("name", $.identifier),
         optional(seq("as", field("alias", $.identifier))),
-        ";",
-      ),
+      )),
 
     const_item: ($) =>
       seq(
@@ -475,7 +482,6 @@ module.exports = grammar({
         ":",
         field("type", $._type),
         optional(seq("=", field("value", $._expression))),
-        ";",
       ),
 
     static_item: ($) =>
@@ -491,7 +497,6 @@ module.exports = grammar({
         ":",
         field("type", $._type),
         optional(seq("=", field("value", $._expression))),
-        ";",
       ),
 
     type_item: ($) =>
@@ -503,11 +508,10 @@ module.exports = grammar({
         "=",
         field("type", $._type),
         optional($.where_clause),
-        ";",
       ),
 
     function_item: ($) =>
-      seq(
+      prec(2, seq(
         optional($.visibility_modifier),
         optional($.function_modifiers),
         "fn",
@@ -517,7 +521,7 @@ module.exports = grammar({
         optional(seq("->", field("return_type", $._type))),
         optional($.where_clause),
         field("body", $.block),
-      ),
+      )),
 
     function_signature_item: ($) =>
       seq(
@@ -529,7 +533,6 @@ module.exports = grammar({
         field("parameters", $.parameters),
         optional(seq("->", field("return_type", $._type))),
         optional($.where_clause),
-        ";",
       ),
 
     function_modifiers: ($) =>
@@ -579,7 +582,7 @@ module.exports = grammar({
         ),
         field("type", $._type),
         optional($.where_clause),
-        choice(field("body", $.declaration_list), ";"),
+        optional(field("body", $.declaration_list)),
       ),
 
     trait_item: ($) =>
@@ -601,7 +604,6 @@ module.exports = grammar({
         field("type_parameters", optional($.type_parameters)),
         field("bounds", optional($.trait_bounds)),
         optional($.where_clause),
-        ";",
       ),
 
     trait_bounds: ($) =>
@@ -667,7 +669,6 @@ module.exports = grammar({
         optional(seq(":", field("type", $._type))),
         optional(seq("=", field("value", $._expression))),
         optional(seq("else", field("alternative", $.block))),
-        ";",
       ),
 
     use_declaration: ($) =>
@@ -675,7 +676,6 @@ module.exports = grammar({
         optional($.visibility_modifier),
         "use",
         field("argument", $._use_clause),
-        ";",
       ),
 
     _use_clause: ($) =>
@@ -1011,7 +1011,7 @@ module.exports = grammar({
     _non_delim_token: ($) => choice($._non_special_token, "$"),
 
     scoped_identifier: ($) =>
-      seq(
+      prec(1, seq(
         field(
           "path",
           optional(
@@ -1024,7 +1024,7 @@ module.exports = grammar({
         ),
         "::",
         field("name", choice($.identifier, $.super)),
-      ),
+      )),
 
     scoped_type_identifier_in_expression_position: ($) =>
       prec(
@@ -1045,7 +1045,7 @@ module.exports = grammar({
       ),
 
     scoped_type_identifier: ($) =>
-      seq(
+      prec(1, seq(
         field(
           "path",
           optional(
@@ -1059,7 +1059,7 @@ module.exports = grammar({
         ),
         "::",
         field("name", $._type_identifier),
-      ),
+      )),
 
     range_expression: ($) =>
       prec.left(
@@ -1207,7 +1207,7 @@ module.exports = grammar({
     unit_expression: (_) => seq("(", ")"),
 
     struct_expression: ($) =>
-      seq(
+      prec(2, seq(
         field(
           "name",
           choice(
@@ -1220,7 +1220,7 @@ module.exports = grammar({
           ),
         ),
         field("body", $.field_initializer_list),
-      ),
+      )),
 
     field_initializer_list: ($) =>
       seq(
