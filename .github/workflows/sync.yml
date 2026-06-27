@@ -5,7 +5,7 @@ name: Sync grammar from fe
 # parser is NOT tracked). This workflow regenerates the parser here so editor
 # integrations have a stable git tree (with src/parser.c) to clone and build.
 #
-#   - master tracks argotorg/fe@master (auto-committed when the grammar changes)
+#   - main tracks argotorg/fe@master (auto-committed when the grammar changes)
 #   - each fe release tag is mirrored to a matching tag here + a GitHub release
 #
 # It only ever reads the public fe repo and writes to THIS repo using the
@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       fe_ref:
-        description: "argotorg/fe ref (branch, tag, or commit SHA) to sync master from"
+        description: "argotorg/fe ref (branch, tag, or commit SHA) to sync main from"
         default: master
 
 permissions:
@@ -28,12 +28,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  master:
+  main:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: master
+          ref: main
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -51,14 +51,14 @@ jobs:
           src="$(cat .source-commit)"
           git add -A
           git commit -m "Sync grammar from argotorg/fe@${src:0:12}"
-          git push origin HEAD:master
+          git push origin HEAD:main
 
   releases:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: master
+          ref: main
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:

@@ -15,7 +15,7 @@
 A scheduled workflow ([`.github/workflows/sync.yml`](.github/workflows/sync.yml))
 regenerates the grammar from `argotorg/fe`:
 
-- **`master`** tracks `argotorg/fe@master`; it is auto-committed whenever the
+- **`main`** tracks `argotorg/fe@master`; it is auto-committed whenever the
   grammar changes. Use this to test in-progress grammar work.
 - **Release tags** (e.g. `v26.3.0`) mirror the corresponding `argotorg/fe`
   release and are the refs editor integrations should normally pin. Each tag
@@ -24,7 +24,7 @@ regenerates the grammar from `argotorg/fe`:
 The `.source-commit` file records the exact `argotorg/fe` commit each revision
 was generated from.
 
-To regenerate locally or point `master` at an arbitrary fe ref, run the sync
+To regenerate locally or point `main` at an arbitrary fe ref, run the sync
 script (or the `Sync grammar from fe` workflow's manual dispatch):
 
 ```sh
