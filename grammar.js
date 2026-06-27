@@ -294,21 +294,18 @@ module.exports = grammar({
       field('body', $.block),
     ),
 
-    recv_arm_pattern: $ => choice(
-      $.wildcard_pattern,
-      seq(
-        field('name', choice($.identifier, $.path)),
-        optional(seq(
-          '{',
-          sepTrailing(choice(
-            // Labeled binding: `a: x` or `a: (x, y)`
-            seq(field('name', $.identifier), ':', field('binding', $._pattern)),
-            $.identifier,
-            $.rest_pattern,
-          ), ','),
-          '}',
-        )),
-      ),
+    recv_arm_pattern: $ => seq(
+      field('name', choice($.identifier, $.path)),
+      optional(seq(
+        '{',
+        sepTrailing(choice(
+          // Labeled binding: `a: x` or `a: (x, y)`
+          seq(field('name', $.identifier), ':', field('binding', $._pattern)),
+          $.identifier,
+          $.rest_pattern,
+        ), ','),
+        '}',
+      )),
     ),
 
     // Msg definition
@@ -416,18 +413,6 @@ module.exports = grammar({
       optional(seq('=', field('value', $._expression))),
     ),
 
-    // Like trait_const_item, but inherent impl consts may carry a
-    // visibility modifier.
-    impl_const_item: $ => seq(
-      optional($.attribute_list),
-      optional($.visibility),
-      'const',
-      field('name', $.identifier),
-      ':',
-      field('type', $._type),
-      optional(seq('=', field('value', $._expression))),
-    ),
-
     // Impl block
     impl_block: $ => seq(
       optional($.attribute_list),
@@ -451,7 +436,7 @@ module.exports = grammar({
 
     impl_item_list: $ => seq(
       '{',
-      repeat(choice($.function_definition, $.impl_const_item)),
+      repeat($.function_definition),
       '}',
     ),
 
@@ -627,7 +612,6 @@ module.exports = grammar({
       $.unary_expression,
       $.cast_expression,
       $.call_expression,
-      $.macro_call_expression,
       $.method_call_expression,
       $.instantiation_expression,
       $.field_expression,
@@ -813,12 +797,6 @@ module.exports = grammar({
       field('arguments', $.call_arg_list),
     )),
 
-    macro_call_expression: $ => prec(PREC.POSTFIX, seq(
-      field('function', $._expression),
-      '!',
-      field('arguments', $.call_arg_list),
-    )),
-
     // Generic instantiation without turbofish: expr<Type>
     // Used for patterns like `evm.create2<Coin>(args)` where:
     // - `evm.create2` is a field_expression
@@ -939,7 +917,6 @@ module.exports = grammar({
       $.unary_expression,
       $.cast_expression,
       $.call_expression,
-      $.macro_call_expression,
       $.method_call_expression,
       $.instantiation_expression,
       $.field_expression,
@@ -1011,7 +988,6 @@ module.exports = grammar({
       $.unary_expression,
       $.cast_expression,
       $.call_expression,
-      $.macro_call_expression,
       $.method_call_expression,
       $.instantiation_expression,
       $.field_expression,
@@ -1070,26 +1046,9 @@ module.exports = grammar({
     match_arm: $ => seq(
       field('pattern', $._pattern),
       '=>',
-      field('value', choice(
-        $._expression,
-        $.match_arm_return,
-        $.match_arm_break,
-        $.match_arm_continue,
-      )),
+      field('value', $._expression),
       choice(',', $._terminator),
     ),
-
-    // Statement-like keywords allowed in match arm bodies.
-    // These mirror return/break/continue_statement but without a trailing
-    // terminator (the match_arm rule already handles that).
-    match_arm_return: $ => prec.right(seq(
-      'return',
-      optional(field('value', $._expression)),
-    )),
-
-    match_arm_break: $ => 'break',
-
-    match_arm_continue: $ => 'continue',
 
     with_expression: $ => seq(
       'with',
@@ -1355,18 +1314,7 @@ module.exports = grammar({
       ')',
     )),
 
-    visibility: $ => seq(
-      'pub',
-      optional(seq(
-        '(',
-        choice(
-          'ingot',
-          'super',
-          seq('in', $.path),
-        ),
-        ')',
-      )),
-    ),
+    visibility: $ => 'pub',
 
     // ==================== LITERALS ====================
 
