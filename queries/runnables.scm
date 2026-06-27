@@ -1,39 +1,21 @@
-
+; Fe test module
 (
-    (mod_item
+    (mod_definition
         name: (_) @run
         (#eq? @run "tests")
     )
-    (#set! tag rust-mod-test)
+    (#set! tag fe-mod-test)
 )
 
+; Fe test function (with #[test] attribute)
 (
-    (
-        (attribute_item (attribute
-            [((identifier) @_attribute)
-                (scoped_identifier (identifier) @_attribute)
-                ])
-            (#match? @_attribute "test")
-        ) @_start
-        .
-        (attribute_item) *
-        .
-        (function_item
-            name: (_) @run
-            body: _
-        ) @_end
+    (function_definition
+        (attribute_list
+            (attribute
+                name: (identifier) @_attribute
+                (#match? @_attribute "test")))
+        name: (_) @run
+        body: _
     )
-    (#set! tag rust-test)
-)
-
-; Rust main function
-(
-    (
-        (function_item
-            name: (_) @run
-            body: _
-        ) @_rust_main_function_end
-        (#eq? @run "main")
-    )
-    (#set! tag rust-main)
+    (#set! tag fe-test)
 )

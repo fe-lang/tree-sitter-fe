@@ -1,393 +1,444 @@
-#include "tree_sitter/alloc.h"
 #include "tree_sitter/parser.h"
+#include <stdbool.h>
 
-#include <wctype.h>
-
+// Must match the order in grammar.js externals array
 enum TokenType {
-    STRING_CONTENT,
-    RAW_STRING_LITERAL_START,
-    RAW_STRING_LITERAL_CONTENT,
-    RAW_STRING_LITERAL_END,
-    FLOAT_LITERAL,
-    BLOCK_OUTER_DOC_MARKER,
-    BLOCK_INNER_DOC_MARKER,
-    BLOCK_COMMENT_CONTENT,
-    LINE_DOC_CONTENT,
-    ERROR_SENTINEL
+  AUTOMATIC_SEMICOLON,
+  BLOCK_COMMENT_CONTENT,
+  BLOCK_COMMENT_END,
+  GENERIC_OPEN,
+  COMPARISON_LT,
 };
 
-typedef struct {
-    uint8_t opening_hash_count;
-} Scanner;
-
-void *tree_sitter_fe_external_scanner_create() { return ts_calloc(1, sizeof(Scanner)); }
-
-void tree_sitter_fe_external_scanner_destroy(void *payload) { ts_free((Scanner *)payload); }
-
+void *tree_sitter_fe_external_scanner_create(void) { return NULL; }
+void tree_sitter_fe_external_scanner_destroy(void *payload) {
+  (void)payload;
+}
 unsigned tree_sitter_fe_external_scanner_serialize(void *payload, char *buffer) {
-    Scanner *scanner = (Scanner *)payload;
-    buffer[0] = (char)scanner->opening_hash_count;
-    return 1;
+  (void)payload;
+  (void)buffer;
+  return 0;
 }
-
 void tree_sitter_fe_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
-    Scanner *scanner = (Scanner *)payload;
-    scanner->opening_hash_count = 0;
-    if (length == 1) {
-        Scanner *scanner = (Scanner *)payload;
-        scanner->opening_hash_count = buffer[0];
-    }
+  (void)payload;
+  (void)buffer;
+  (void)length;
 }
 
-static inline bool is_num_char(int32_t c) { return c == '_' || iswdigit(c); }
+static void advance(TSLexer *lexer) { lexer->advance(lexer, false); }
+static void skip(TSLexer *lexer) { lexer->advance(lexer, true); }
 
-static inline void advance(TSLexer *lexer) { lexer->advance(lexer, false); }
+static bool is_continuation_after_newline(int32_t c) {
+  switch (c) {
+    case '.':
+    case '+':
+    case '*':
+    case '/':
+    case '%':
+    case '|':
+    case '&':
+    case '^':
+    case '>':
+    case '=':
+      return true;
+    default:
+      return false;
+  }
+}
 
-static inline void skip(TSLexer *lexer) { lexer->advance(lexer, true); }
+// Skip a block comment (after consuming /*). Returns true if successfully skipped.
+static bool skip_block_comment(TSLexer *lexer) {
+  int depth = 1;
+  while (depth > 0 && !lexer->eof(lexer)) {
+    if (lexer->lookahead == '*') {
+      skip(lexer);
+      if (!lexer->eof(lexer) && lexer->lookahead == '/') {
+        skip(lexer);
+        depth--;
+      }
+      continue;
+    }
+    if (lexer->lookahead == '/') {
+      skip(lexer);
+      if (!lexer->eof(lexer) && lexer->lookahead == '*') {
+        skip(lexer);
+        depth++;
+      }
+      continue;
+    }
+    skip(lexer);
+  }
+  return depth == 0;
+}
 
-static inline bool process_string(TSLexer *lexer) {
-    bool has_content = false;
-    for (;;) {
-        if (lexer->lookahead == '\"' || lexer->lookahead == '\\') {
-            break;
+// Scan for automatic semicolon insertion.
+// Returns true to emit a zero-width semicolon, false to let the parser
+// continue without one.
+//
+// After finding a newline (or EOF/closing-brace), we peek at the first
+// non-whitespace token on the *next* line. If it is a continuation token,
+// we suppress the semicolon so
+// that multi-line expressions work correctly:
+//
+//   x
+//   + y      <- no semicolon after x
+//   || z     <- no semicolon after + y
+//   .y()     <- no semicolon after x
+//   .z()     <- no semicolon after .y()
+//
+static bool scan_automatic_semicolon(TSLexer *lexer) {
+  lexer->result_symbol = AUTOMATIC_SEMICOLON;
+  lexer->mark_end(lexer);
+
+  bool saw_newline = false;
+
+  for (;;) {
+    if (lexer->eof(lexer)) return true;
+
+    int32_t c = lexer->lookahead;
+
+    if (c == '\n') {
+      saw_newline = true;
+      skip(lexer);
+      continue;
+    }
+
+    // Closing brace -- statement ends before }
+    if (c == '}') return true;
+
+    // Skip non-newline whitespace
+    if (c == ' ' || c == '\t' || c == '\r') {
+      skip(lexer);
+      continue;
+    }
+
+    // Handle comments
+    if (c == '/') {
+      skip(lexer);
+      if (lexer->lookahead == '/') {
+        // Line comment -- skip to newline
+        while (!lexer->eof(lexer) && lexer->lookahead != '\n') {
+          skip(lexer);
         }
-        if (lexer->eof(lexer)) {
-            return false;
+        continue;
+      }
+      if (lexer->lookahead == '*') {
+        // Block comment -- skip through it
+        skip(lexer);
+        skip_block_comment(lexer);
+        continue;
+      }
+      // Just `/` -- division operator continuation
+      return false;
+    }
+
+    // We've found a non-whitespace, non-comment character.
+    if (!saw_newline) {
+      // Still on the same line -- no semicolon (more expression follows)
+      return false;
+    }
+
+    // We're past a newline. Check for continuation tokens.
+    if (is_continuation_after_newline(c)) return false;
+
+    if (c == '!') {
+      // `!=` is a continuation; unary `!` starts a new expression.
+      advance(lexer);
+      return lexer->lookahead != '=';
+    }
+
+    if (c == '-') {
+      // `-=` is a continuation; unary/binary `-` starts a new expression.
+      advance(lexer);
+      return lexer->lookahead != '=';
+    }
+
+    if (c == '<') {
+      // Only `<=` and `<<=` are continuations.
+      // Bare `<` and bare `<<` start a new expression boundary.
+      advance(lexer);
+      if (lexer->lookahead == '=') return false;
+
+      if (lexer->lookahead == '<') {
+        advance(lexer);
+        return lexer->lookahead != '=';
+      }
+
+      return true;
+    }
+
+    // Any other token after a newline -- insert semicolon
+    return true;
+  }
+}
+
+
+bool tree_sitter_fe_external_scanner_scan(void *payload, TSLexer *lexer,
+                                          const bool *valid_symbols) {
+  (void)payload;
+
+  // Skip if in error recovery mode (all symbols valid)
+  if (valid_symbols[AUTOMATIC_SEMICOLON] &&
+      valid_symbols[BLOCK_COMMENT_CONTENT] &&
+      valid_symbols[BLOCK_COMMENT_END] &&
+      valid_symbols[GENERIC_OPEN] &&
+      valid_symbols[COMPARISON_LT]) {
+    return false;
+  }
+
+  // Try automatic semicolon first, but if it returns false and other tokens
+  // are also valid, fall through to check them.
+  if (valid_symbols[AUTOMATIC_SEMICOLON]) {
+    if (scan_automatic_semicolon(lexer)) {
+      return true;
+    }
+    // Automatic semicolon not needed -- fall through to check other tokens
+  }
+
+  // Disambiguate '<': generic open vs comparison less-than.
+  // When both are valid, try generic first (lookahead for matching '>').
+  // If no matching '>' found, fall back to comparison.
+  if ((valid_symbols[GENERIC_OPEN] || valid_symbols[COMPARISON_LT]) &&
+      !lexer->eof(lexer)) {
+    // Skip whitespace before checking for '<'
+    while (!lexer->eof(lexer) &&
+           (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+            lexer->lookahead == '\r' || lexer->lookahead == '\n')) {
+      skip(lexer);
+    }
+    if (lexer->lookahead == '<') {
+      // Peek ahead: consume '<' and check next character to determine
+      // if this is a multi-character operator (<=, <<, <<=).
+      lexer->mark_end(lexer);
+      advance(lexer);  // consume '<'
+      int32_t next = lexer->lookahead;
+
+      if (next == '=') {
+        // This is <= -- let the internal lexer handle it.
+        return false;
+      }
+
+      if (next == '<') {
+        // Could be << (shift), <<= (shift-assign), or nested generics <<T as...
+        // If only GENERIC_OPEN is valid (no COMPARISON_LT), this is a generic
+        // context (e.g., start of qualified path <<T as Trait>::Item as ...>).
+        // Emit just the first '<' as GENERIC_OPEN.
+        if (valid_symbols[GENERIC_OPEN] && !valid_symbols[COMPARISON_LT]) {
+          lexer->mark_end(lexer);  // mark end after first '<'
+          lexer->result_symbol = GENERIC_OPEN;
+          return true;
+        }
+        // Otherwise let the internal lexer handle << / <<=
+        return false;
+      }
+
+      // Single '<' -- decide between generic and comparison.
+      lexer->mark_end(lexer);  // mark end after '<'
+
+      if (valid_symbols[GENERIC_OPEN]) {
+        // Continue scanning ahead to find matching '>' for generic.
+        // We already consumed '<'; now lookahead for balanced '>'.
+        // Track angle depth, plus paren/bracket/brace depth so we don't
+        // mistake a '>' inside nested delimiters for the closing angle.
+        int angle_depth = 1;
+        int paren_depth = 0;
+        int bracket_depth = 0;
+        int brace_depth = 0;
+        bool is_generic = false;
+        // Track last non-whitespace char at top level (all depths 0) to
+        // distinguish `Foo<T, {expr}>` ('{' after ',') from `if x < y {` ('{' after identifier).
+        int32_t last_top_char = '<';  // Starts as '<' since we just consumed it.
+
+        while (!lexer->eof(lexer)) {
+          int32_t c = lexer->lookahead;
+
+          switch (c) {
+            case '(':
+              paren_depth++;
+              advance(lexer);
+              continue;
+            case ')':
+              if (paren_depth == 0) goto not_generic;
+              paren_depth--;
+              advance(lexer);
+              continue;
+            case '[':
+              bracket_depth++;
+              advance(lexer);
+              continue;
+            case ']':
+              if (bracket_depth == 0) goto not_generic;
+              bracket_depth--;
+              advance(lexer);
+              continue;
+            case '{':
+              // At top level (brace_depth 0), '{' is only valid in generics
+              // when it starts a const-generic block expression, i.e. after
+              // '<' or ','.  If it follows an identifier/)/] it's a block body
+              // (e.g. `if x < y { ... }`).
+              if (brace_depth == 0 && last_top_char != '<' && last_top_char != ',') {
+                goto not_generic;
+              }
+              brace_depth++;
+              advance(lexer);
+              continue;
+            case '}':
+              if (brace_depth == 0) goto not_generic;
+              brace_depth--;
+              advance(lexer);
+              continue;
+            case ';':
+              // Semicolons are only valid inside brackets (array types)
+              // or braces (const generic blocks)
+              if (bracket_depth == 0 && brace_depth == 0) goto not_generic;
+              advance(lexer);
+              continue;
+            case '|':
+              advance(lexer);
+              // || at top level is a boolean operator -- can't be in generics
+              if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 &&
+                  lexer->lookahead == '|') goto not_generic;
+              continue;
+            case '&':
+              advance(lexer);
+              // && at top level is a boolean operator -- can't be in generics
+              if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 &&
+                  lexer->lookahead == '&') goto not_generic;
+              continue;
+            case '=':
+              advance(lexer);
+              // => at top level is a match arm separator -- can't be in generics
+              // (= alone IS valid: assoc type args like Item = T)
+              if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 &&
+                  lexer->lookahead == '>') goto not_generic;
+              continue;
+            case '.':
+              advance(lexer);
+              // .. at top level is a range operator -- can't be in generics
+              if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 &&
+                  lexer->lookahead == '.') goto not_generic;
+              continue;
+            case '<':
+              if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0) {
+                angle_depth++;
+                last_top_char = '<';
+                advance(lexer);
+                if (lexer->lookahead == '<') goto not_generic;
+              } else {
+                advance(lexer);
+              }
+              continue;
+            case '>':
+              if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0) {
+                angle_depth--;
+                if (angle_depth == 0) { is_generic = true; goto done_scanning; }
+              }
+              advance(lexer);
+              continue;
+            case ' ': case '\t': case '\r': case '\n':
+              advance(lexer);
+              continue;
+            case '/':
+              advance(lexer);
+              if (lexer->lookahead == '/') {
+                while (!lexer->eof(lexer) && lexer->lookahead != '\n') advance(lexer);
+                continue;
+              }
+              if (lexer->lookahead == '*') {
+                advance(lexer);
+                int cd = 1;
+                while (cd > 0 && !lexer->eof(lexer)) {
+                  if (lexer->lookahead == '*') { advance(lexer); if (!lexer->eof(lexer) && lexer->lookahead == '/') { advance(lexer); cd--; } continue; }
+                  if (lexer->lookahead == '/') { advance(lexer); if (!lexer->eof(lexer) && lexer->lookahead == '*') { advance(lexer); cd++; } continue; }
+                  advance(lexer);
+                }
+                continue;
+              }
+              // '/' alone -- division, still valid inside generics
+              if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0) last_top_char = '/';
+              continue;
+            default:
+              if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0) last_top_char = c;
+              advance(lexer);
+              continue;
+          }
+        }
+
+        not_generic:
+        done_scanning:
+
+        if (is_generic) {
+          lexer->result_symbol = GENERIC_OPEN;
+          return true;
+        }
+      }
+
+      // Not a generic -- emit comparison '<' if valid
+      if (valid_symbols[COMPARISON_LT]) {
+        lexer->result_symbol = COMPARISON_LT;
+        return true;
+      }
+    }
+  }
+
+  // Handle block comment content and end
+  if (valid_symbols[BLOCK_COMMENT_CONTENT] || valid_symbols[BLOCK_COMMENT_END]) {
+    int depth = 1;
+    bool has_content = false;
+
+    while (depth > 0 && !lexer->eof(lexer)) {
+      if (lexer->lookahead == '/') {
+        advance(lexer);
+        if (lexer->lookahead == '*') {
+          advance(lexer);
+          depth++;
+          has_content = true;
+          continue;
         }
         has_content = true;
-        advance(lexer);
-    }
-    lexer->result_symbol = STRING_CONTENT;
-    lexer->mark_end(lexer);
-    return has_content;
-}
+        continue;
+      }
 
-static inline bool scan_raw_string_start(Scanner *scanner, TSLexer *lexer) {
-    if (lexer->lookahead == 'b' || lexer->lookahead == 'c') {
-        advance(lexer);
-    }
-    if (lexer->lookahead != 'r') {
-        return false;
-    }
-    advance(lexer);
-
-    uint8_t opening_hash_count = 0;
-    while (lexer->lookahead == '#') {
-        advance(lexer);
-        opening_hash_count++;
-    }
-
-    if (lexer->lookahead != '"') {
-        return false;
-    }
-    advance(lexer);
-    scanner->opening_hash_count = opening_hash_count;
-
-    lexer->result_symbol = RAW_STRING_LITERAL_START;
-    return true;
-}
-
-static inline bool scan_raw_string_content(Scanner *scanner, TSLexer *lexer) {
-    for (;;) {
-        if (lexer->eof(lexer)) {
-            return false;
-        }
-        if (lexer->lookahead == '"') {
-            lexer->mark_end(lexer);
-            advance(lexer);
-            unsigned hash_count = 0;
-            while (lexer->lookahead == '#' && hash_count < scanner->opening_hash_count) {
-                advance(lexer);
-                hash_count++;
-            }
-            if (hash_count == scanner->opening_hash_count) {
-                lexer->result_symbol = RAW_STRING_LITERAL_CONTENT;
-                return true;
-            }
-        } else {
-            advance(lexer);
-        }
-    }
-}
-
-static inline bool scan_raw_string_end(Scanner *scanner, TSLexer *lexer) {
-    advance(lexer);
-    for (unsigned i = 0; i < scanner->opening_hash_count; i++) {
-        advance(lexer);
-    }
-    lexer->result_symbol = RAW_STRING_LITERAL_END;
-    return true;
-}
-
-static inline bool process_float_literal(TSLexer *lexer) {
-    lexer->result_symbol = FLOAT_LITERAL;
-
-    advance(lexer);
-    while (is_num_char(lexer->lookahead)) {
-        advance(lexer);
-    }
-
-    bool has_fraction = false, has_exponent = false;
-
-    if (lexer->lookahead == '.') {
-        has_fraction = true;
-        advance(lexer);
-        if (iswalpha(lexer->lookahead)) {
-            // The dot is followed by a letter: 1.max(2) => not a float but an integer
-            return false;
-        }
-
-        if (lexer->lookahead == '.') {
-            return false;
-        }
-        while (is_num_char(lexer->lookahead)) {
-            advance(lexer);
-        }
-    }
-
-    lexer->mark_end(lexer);
-
-    if (lexer->lookahead == 'e' || lexer->lookahead == 'E') {
-        has_exponent = true;
-        advance(lexer);
-        if (lexer->lookahead == '+' || lexer->lookahead == '-') {
-            advance(lexer);
-        }
-        if (!is_num_char(lexer->lookahead)) {
+      if (lexer->lookahead == '*') {
+        if (depth == 1) {
+          if (has_content) {
+            lexer->result_symbol = BLOCK_COMMENT_CONTENT;
             return true;
-        }
-        advance(lexer);
-        while (is_num_char(lexer->lookahead)) {
+          }
+          advance(lexer);
+          if (lexer->lookahead == '/') {
             advance(lexer);
-        }
-
-        lexer->mark_end(lexer);
-    }
-
-    if (!has_exponent && !has_fraction) {
-        return false;
-    }
-
-    if (lexer->lookahead != 'u' && lexer->lookahead != 'i' && lexer->lookahead != 'f') {
-        return true;
-    }
-    advance(lexer);
-    if (!iswdigit(lexer->lookahead)) {
-        return true;
-    }
-
-    while (iswdigit(lexer->lookahead)) {
-        advance(lexer);
-    }
-
-    lexer->mark_end(lexer);
-    return true;
-}
-
-static inline bool process_line_doc_content(TSLexer *lexer) {
-    lexer->result_symbol = LINE_DOC_CONTENT;
-    for (;;) {
-        if (lexer->eof(lexer)) {
+            lexer->result_symbol = BLOCK_COMMENT_END;
             return true;
+          }
+          has_content = true;
+          continue;
         }
-        if (lexer->lookahead == '\n') {
-            // Include the newline in the doc content node.
-            // Line endings are useful for markdown injection.
-            advance(lexer);
-            return true;
-        }
+
         advance(lexer);
-    }
-}
-
-typedef enum {
-    LeftForwardSlash,
-    LeftAsterisk,
-    Continuing,
-} BlockCommentState;
-
-typedef struct {
-    BlockCommentState state;
-    unsigned nestingDepth;
-} BlockCommentProcessing;
-
-static inline void process_left_forward_slash(BlockCommentProcessing *processing, char current) {
-    if (current == '*') {
-        processing->nestingDepth += 1;
-    }
-    processing->state = Continuing;
-};
-
-static inline void process_left_asterisk(BlockCommentProcessing *processing, char current, TSLexer *lexer) {
-    if (current == '*') {
-        lexer->mark_end(lexer);
-        processing->state = LeftAsterisk;
-        return;
-    }
-
-    if (current == '/') {
-        processing->nestingDepth -= 1;
-    }
-
-    processing->state = Continuing;
-}
-
-static inline void process_continuing(BlockCommentProcessing *processing, char current) {
-    switch (current) {
-        case '/':
-            processing->state = LeftForwardSlash;
-            break;
-        case '*':
-            processing->state = LeftAsterisk;
-            break;
-    }
-}
-
-static inline bool process_block_comment(TSLexer *lexer, const bool *valid_symbols) {
-    char first = (char)lexer->lookahead;
-    // The first character is stored so we can safely advance inside
-    // these if blocks. However, because we only store one, we can only
-    // safely advance 1 time. Since there's a chance that an advance could
-    // happen in one state, we must advance in all states to ensure that
-    // the program ends up in a sane state prior to processing the block
-    // comment if need be.
-    if (valid_symbols[BLOCK_INNER_DOC_MARKER] && first == '!') {
-        lexer->result_symbol = BLOCK_INNER_DOC_MARKER;
-        advance(lexer);
-        return true;
-    }
-    if (valid_symbols[BLOCK_OUTER_DOC_MARKER] && first == '*') {
-        advance(lexer);
-        lexer->mark_end(lexer);
-        // If the next token is a / that means that it's an empty block comment.
         if (lexer->lookahead == '/') {
-            return false;
+          advance(lexer);
+          depth--;
+          has_content = true;
+          continue;
         }
-        // If the next token is a * that means that this isn't a BLOCK_OUTER_DOC_MARKER
-        // as BLOCK_OUTER_DOC_MARKER's only have 2 * not 3 or more.
-        if (lexer->lookahead != '*') {
-            lexer->result_symbol = BLOCK_OUTER_DOC_MARKER;
-            return true;
-        }
-    } else {
-        advance(lexer);
+        has_content = true;
+        continue;
+      }
+
+      advance(lexer);
+      has_content = true;
     }
 
-    if (valid_symbols[BLOCK_COMMENT_CONTENT]) {
-        BlockCommentProcessing processing = {Continuing, 1};
-        // Manually set the current state based on the first character
-        switch (first) {
-            case '*':
-                processing.state = LeftAsterisk;
-                if (lexer->lookahead == '/') {
-                    // This case can happen in an empty doc block comment
-                    // like /*!*/. The comment has no contents, so bail.
-                    return false;
-                }
-                break;
-            case '/':
-                processing.state = LeftForwardSlash;
-                break;
-            default:
-                processing.state = Continuing;
-                break;
-        }
-
-        // For the purposes of actually parsing rust code, this
-        // is incorrect as it considers an unterminated block comment
-        // to be an error. However, for the purposes of syntax highlighting
-        // this should be considered successful as otherwise you are not able
-        // to syntax highlight a block of code prior to closing the
-        // block comment
-        while (!lexer->eof(lexer) && processing.nestingDepth != 0) {
-            // Set first to the current lookahead as that is the second character
-            // as we force an advance in the above code when we are checking if we
-            // need to handle a block comment inner or outer doc comment signifier
-            // node
-            first = (char)lexer->lookahead;
-            switch (processing.state) {
-                case LeftForwardSlash:
-                    process_left_forward_slash(&processing, first);
-                    break;
-                case LeftAsterisk:
-                    process_left_asterisk(&processing, first, lexer);
-                    break;
-                case Continuing:
-                    lexer->mark_end(lexer);
-                    process_continuing(&processing, first);
-                    break;
-                default:
-                    break;
-            }
-            advance(lexer);
-            if (first == '/' && processing.nestingDepth != 0) {
-                lexer->mark_end(lexer);
-            }
-        }
-        lexer->result_symbol = BLOCK_COMMENT_CONTENT;
-        return true;
+    if (has_content) {
+      lexer->result_symbol = BLOCK_COMMENT_CONTENT;
+      return true;
     }
-
-    return false;
-}
-
-bool tree_sitter_fe_external_scanner_scan(void *payload, TSLexer *lexer, const bool *valid_symbols) {
-    // The documentation states that if the lexical analysis fails for some reason
-    // they will mark every state as valid and pass it to the external scanner
-    // However, we can't do anything to help them recover in that case so we
-    // should just fail.
-    /*
-      link: https://tree-sitter.github.io/tree-sitter/creating-parsers#external-scanners
-      If a syntax error is encountered during regular parsing, Tree-sitter’s
-      first action during error recovery will be to call the external scanner’s
-      scan function with all tokens marked valid. The scanner should detect this
-      case and handle it appropriately. One simple method of detection is to add
-      an unused token to the end of the externals array, for example
-
-      externals: $ => [$.token1, $.token2, $.error_sentinel],
-
-      then check whether that token is marked valid to determine whether
-      Tree-sitter is in error correction mode.
-    */
-    if (valid_symbols[ERROR_SENTINEL]) {
-        return false;
+    if (depth == 0) {
+      lexer->result_symbol = BLOCK_COMMENT_END;
+      return true;
     }
+  }
 
-    Scanner *scanner = (Scanner *)payload;
-
-    if (valid_symbols[BLOCK_COMMENT_CONTENT] || valid_symbols[BLOCK_INNER_DOC_MARKER] ||
-        valid_symbols[BLOCK_OUTER_DOC_MARKER]) {
-        return process_block_comment(lexer, valid_symbols);
-    }
-
-    if (valid_symbols[STRING_CONTENT] && !valid_symbols[FLOAT_LITERAL]) {
-        return process_string(lexer);
-    }
-
-    if (valid_symbols[LINE_DOC_CONTENT]) {
-        return process_line_doc_content(lexer);
-    }
-
-    while (iswspace(lexer->lookahead)) {
-        skip(lexer);
-    }
-
-    if (valid_symbols[RAW_STRING_LITERAL_START] &&
-        (lexer->lookahead == 'r' || lexer->lookahead == 'b' || lexer->lookahead == 'c')) {
-        return scan_raw_string_start(scanner, lexer);
-    }
-
-    if (valid_symbols[RAW_STRING_LITERAL_CONTENT]) {
-        return scan_raw_string_content(scanner, lexer);
-    }
-
-    if (valid_symbols[RAW_STRING_LITERAL_END] && lexer->lookahead == '"') {
-        return scan_raw_string_end(scanner, lexer);
-    }
-
-    if (valid_symbols[FLOAT_LITERAL] && iswdigit(lexer->lookahead)) {
-        return process_float_literal(lexer);
-    }
-
-    return false;
+  return false;
 }

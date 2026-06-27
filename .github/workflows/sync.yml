@@ -1,0 +1,71 @@
+name: Sync grammar from fe
+
+# This repository is a generated mirror of the Fe tree-sitter grammar, whose
+# source lives in argotorg/fe at crates/tree-sitter-fe (where the generated
+# parser is NOT tracked). This workflow regenerates the parser here so editor
+# integrations have a stable git tree (with src/parser.c) to clone and build.
+#
+#   - master tracks argotorg/fe@master (auto-committed when the grammar changes)
+#   - each fe release tag is mirrored to a matching tag here + a GitHub release
+#
+# It only ever reads the public fe repo and writes to THIS repo using the
+# built-in GITHUB_TOKEN, so no cross-repo credentials are involved.
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # daily
+  workflow_dispatch:
+    inputs:
+      fe_ref:
+        description: "argotorg/fe ref (branch, tag, or commit SHA) to sync master from"
+        default: master
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-grammar
+  cancel-in-progress: false
+
+jobs:
+  master:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Sync grammar from fe
+        run: scripts/sync-from-fe.sh "${{ github.event.inputs.fe_ref || 'master' }}"
+      - name: Commit if the grammar changed
+        run: |
+          git config user.name "fe-grammar-bot"
+          git config user.email "actions@github.com"
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No grammar changes."
+            exit 0
+          fi
+          src="$(cat .source-commit)"
+          git add -A
+          git commit -m "Sync grammar from argotorg/fe@${src:0:12}"
+          git push origin HEAD:master
+
+  releases:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+      - name: Mirror new fe release tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/mirror-releases.sh

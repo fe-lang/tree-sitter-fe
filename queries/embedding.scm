@@ -1,32 +1,37 @@
 (
-    [(line_comment) (attribute_item)]* @context
+    [(line_comment) (attribute)]* @context
     .
     [
-
-        (struct_item
+        (struct_definition
             name: (_) @name)
 
-        (enum_item
+        (enum_definition
             name: (_) @name)
 
-        (impl_item
-            trait: (_)? @name
-            "for"? @name
+        (impl_block
             type: (_) @name)
 
-        (trait_item
+        (impl_trait
+            trait: (_) @name
+            "for" @name
+            type: (_) @name)
+
+        (trait_definition
             name: (_) @name)
 
-        (function_item
+        (contract_definition
+            name: (_) @name)
+
+        (msg_definition
+            name: (_) @name)
+
+        (function_definition
             name: (_) @name
             body: (block
                 "{" @keep
                 "}" @keep) @collapse)
-
-        (macro_definition
-            name: (_) @name)
         ] @item
     )
 
-(attribute_item) @collapse
-(use_declaration) @collapse
+(attribute) @collapse
+(use_statement) @collapse

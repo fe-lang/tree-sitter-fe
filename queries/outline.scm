@@ -1,72 +1,79 @@
-(attribute_item) @annotation
-(line_comment) @annotation
+(attribute) @annotation
+(doc_comment) @annotation
 
-(struct_item
-    (visibility_modifier)? @context
+(struct_definition
+    (visibility)? @context
     "struct" @context
     name: (_) @name) @item
 
-(enum_item
-    (visibility_modifier)? @context
+(enum_definition
+    (visibility)? @context
     "enum" @context
     name: (_) @name) @item
 
-(enum_variant
-    (visibility_modifier)? @context
+(variant_def
     name: (_) @name) @item
 
-(impl_item
+(contract_definition
+    (visibility)? @context
+    "contract" @context
+    name: (_) @name) @item
+
+(msg_definition
+    (visibility)? @context
+    "msg" @context
+    name: (_) @name) @item
+
+(impl_block
     "impl" @context
-    trait: (_)? @name
-    "for"? @context
     type: (_) @name
     body: (_ "{" @open (_)* "}" @close)) @item
 
-(trait_item
-    (visibility_modifier)? @context
+(impl_trait
+    "impl" @context
+    trait: (_) @name
+    "for" @context
+    type: (_) @name
+    body: (_ "{" @open (_)* "}" @close)) @item
+
+(trait_definition
+    (visibility)? @context
     "trait" @context
     name: (_) @name) @item
 
-(function_item
-    (visibility_modifier)? @context
-    (function_modifiers)? @context
+(function_definition
+    (visibility)? @context
     "fn" @context
     name: (_) @name) @item
 
-(function_signature_item
-    (visibility_modifier)? @context
-    (function_modifiers)? @context
-    "fn" @context
-    name: (_) @name) @item
-
-(macro_definition
-    . "macro_rules!" @context
-    name: (_) @name) @item
-
-(mod_item
-    (visibility_modifier)? @context
+(mod_definition
+    (visibility)? @context
     "mod" @context
     name: (_) @name) @item
 
-(type_item
-    (visibility_modifier)? @context
+(type_alias
+    (visibility)? @context
     "type" @context
     name: (_) @name) @item
 
-(associated_type
+(trait_type_item
     "type" @context
     name: (_) @name) @item
 
-(const_item
-    (visibility_modifier)? @context
+(const_definition
+    (visibility)? @context
     "const" @context
     name: (_) @name) @item
 
-(static_item
-    (visibility_modifier)? @context
-    "static" @context
+(trait_const_item
+    "const" @context
     name: (_) @name) @item
 
-(field_declaration
-    (visibility_modifier)? @context
+(impl_const_item
+    (visibility)? @context
+    "const" @context
+    name: (_) @name) @item
+
+(record_field_def
+    (visibility)? @context
     name: (_) @name) @item
