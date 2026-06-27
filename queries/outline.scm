@@ -69,11 +69,6 @@
     "const" @context
     name: (_) @name) @item
 
-(impl_const_item
-    (visibility)? @context
-    "const" @context
-    name: (_) @name) @item
-
 (record_field_def
     (visibility)? @context
     name: (_) @name) @item
