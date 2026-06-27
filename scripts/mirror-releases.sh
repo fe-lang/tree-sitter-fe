@@ -18,6 +18,10 @@ cd "$repo_root"
 git config user.name "${GIT_AUTHOR_NAME:-fe-grammar-bot}"
 git config user.email "${GIT_AUTHOR_EMAIL:-actions@github.com}"
 
+# Base to build each release on (the checked-out default-branch commit). Captured
+# as a SHA so we don't depend on a local branch ref existing in CI checkouts.
+base="$(git rev-parse HEAD)"
+
 mapfile -t fe_tags < <(gh release list --repo "$FE_REPO_SLUG" --limit 50 --json tagName --jq '.[].tagName')
 existing_tags="$(git tag -l)"
 
@@ -27,9 +31,9 @@ for tag in "${fe_tags[@]}"; do
     continue
   fi
   echo "::group::Mirroring $tag"
-  # Build the grammar for this release on a throwaway branch off master so the
+  # Build the grammar for this release on a throwaway branch off the base so the
   # generated artifacts don't land on master; only the tag is published.
-  git checkout -q -B mirror-tmp master
+  git checkout -q -B mirror-tmp "$base"
   if scripts/sync-from-fe.sh "$tag"; then
     npx tree-sitter build --wasm .
     src="$(cat .source-commit)"
@@ -44,7 +48,7 @@ for tag in "${fe_tags[@]}"; do
   else
     echo "No grammar present at $tag; skipping."
   fi
-  git checkout -q -f master
+  git checkout -q -f "$base"
   git branch -qD mirror-tmp 2>/dev/null || true
   echo "::endgroup::"
 done
