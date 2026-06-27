@@ -11,40 +11,12 @@ enum TokenType {
 };
 
 void *tree_sitter_fe_external_scanner_create(void) { return NULL; }
-void tree_sitter_fe_external_scanner_destroy(void *payload) {
-  (void)payload;
-}
-unsigned tree_sitter_fe_external_scanner_serialize(void *payload, char *buffer) {
-  (void)payload;
-  (void)buffer;
-  return 0;
-}
-void tree_sitter_fe_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {
-  (void)payload;
-  (void)buffer;
-  (void)length;
-}
+void tree_sitter_fe_external_scanner_destroy(void *payload) {}
+unsigned tree_sitter_fe_external_scanner_serialize(void *payload, char *buffer) { return 0; }
+void tree_sitter_fe_external_scanner_deserialize(void *payload, const char *buffer, unsigned length) {}
 
 static void advance(TSLexer *lexer) { lexer->advance(lexer, false); }
 static void skip(TSLexer *lexer) { lexer->advance(lexer, true); }
-
-static bool is_continuation_after_newline(int32_t c) {
-  switch (c) {
-    case '.':
-    case '+':
-    case '*':
-    case '/':
-    case '%':
-    case '|':
-    case '&':
-    case '^':
-    case '>':
-    case '=':
-      return true;
-    default:
-      return false;
-  }
-}
 
 // Skip a block comment (after consuming /*). Returns true if successfully skipped.
 static bool skip_block_comment(TSLexer *lexer) {
@@ -76,13 +48,11 @@ static bool skip_block_comment(TSLexer *lexer) {
 // continue without one.
 //
 // After finding a newline (or EOF/closing-brace), we peek at the first
-// non-whitespace token on the *next* line. If it is a continuation token,
-// we suppress the semicolon so
+// non-whitespace token on the *next* line. If it is a continuation token
+// (currently just `.` for method chaining), we suppress the semicolon so
 // that multi-line expressions work correctly:
 //
 //   x
-//   + y      <- no semicolon after x
-//   || z     <- no semicolon after + y
 //   .y()     <- no semicolon after x
 //   .z()     <- no semicolon after .y()
 //
@@ -128,7 +98,9 @@ static bool scan_automatic_semicolon(TSLexer *lexer) {
         skip_block_comment(lexer);
         continue;
       }
-      // Just `/` -- division operator continuation
+      // Just `/` -- division operator on the same line (no newline yet)
+      // or continuation after newline
+      if (saw_newline) return false; // `/` is not a continuation token
       return false;
     }
 
@@ -139,33 +111,8 @@ static bool scan_automatic_semicolon(TSLexer *lexer) {
     }
 
     // We're past a newline. Check for continuation tokens.
-    if (is_continuation_after_newline(c)) return false;
-
-    if (c == '!') {
-      // `!=` is a continuation; unary `!` starts a new expression.
-      advance(lexer);
-      return lexer->lookahead != '=';
-    }
-
-    if (c == '-') {
-      // `-=` is a continuation; unary/binary `-` starts a new expression.
-      advance(lexer);
-      return lexer->lookahead != '=';
-    }
-
-    if (c == '<') {
-      // Only `<=` and `<<=` are continuations.
-      // Bare `<` and bare `<<` start a new expression boundary.
-      advance(lexer);
-      if (lexer->lookahead == '=') return false;
-
-      if (lexer->lookahead == '<') {
-        advance(lexer);
-        return lexer->lookahead != '=';
-      }
-
-      return true;
-    }
+    // `.` means method chaining -- don't insert semicolon
+    if (c == '.') return false;
 
     // Any other token after a newline -- insert semicolon
     return true;
@@ -175,8 +122,6 @@ static bool scan_automatic_semicolon(TSLexer *lexer) {
 
 bool tree_sitter_fe_external_scanner_scan(void *payload, TSLexer *lexer,
                                           const bool *valid_symbols) {
-  (void)payload;
-
   // Skip if in error recovery mode (all symbols valid)
   if (valid_symbols[AUTOMATIC_SEMICOLON] &&
       valid_symbols[BLOCK_COMMENT_CONTENT] &&

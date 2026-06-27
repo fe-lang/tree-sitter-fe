@@ -1,20 +1,15 @@
 ; === Types ===
 
-; === Types ===
-; Structural: identifiers in type positions (path_type, generic args, etc.)
-(path_type (path (path_segment (identifier) @type)))
-
-; Self type (standalone self_type node or Self as a path_segment keyword)
-(self_type) @type.builtin
-((path_segment) @type.builtin (#eq? @type.builtin "Self"))
-
-; Fallback: assume uppercase identifiers are types/constructors elsewhere
+; Assume uppercase identifiers are types/constructors
 ((identifier) @type
  (#match? @type "^[A-Z]"))
 
-; ALL_CAPS identifiers are constants
+; Assume ALL_CAPS identifiers are constants
 ((identifier) @constant
  (#match? @constant "^_*[A-Z][A-Z\\d_]*$"))
+
+; Self type
+(self_type) @type.builtin
 
 ; === Functions ===
 
@@ -55,12 +50,10 @@
 (record_field name: (identifier) @property)
 (record_pattern_field name: (identifier) @property)
 
-; === Parameters and Local Variables ===
+; === Parameters ===
 
 (parameter name: (identifier) @variable.parameter)
 (uses_param name: (identifier) @variable.parameter)
-(let_statement name: (path_pattern (path (path_segment (identifier) @variable))))
-(let_statement name: (mut_pattern (path_pattern (path (path_segment (identifier) @variable)))))
 
 ; === Attributes ===
 
@@ -89,7 +82,6 @@
   "mod"
   "msg"
   "mut"
-  "own"
   "recv"
   "self"
   "struct"
