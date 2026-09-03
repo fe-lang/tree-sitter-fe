@@ -3278,6 +3278,10 @@
             "named": true
           },
           {
+            "type": "condition_or_expression_no_let",
+            "named": true
+          },
+          {
             "type": "field_expression",
             "named": true
           },
@@ -8733,6 +8737,10 @@
         "types": [
           {
             "type": "!",
+            "named": false
+          },
+          {
+            "type": "*",
             "named": false
           },
           {
