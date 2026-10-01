@@ -47,9 +47,14 @@ module.exports = grammar({
   ],
 
   conflicts: $ => [
+    [$._expression, $._condition_atom_no_let, $._path],
+    [$._expression, $._condition_atom_no_let, $._path, $.path_segment],
+    [$.where_clause],
+    [$.qualified_path_type, $.qualified_path_expression],
+    [$.tuple_type, $.tuple_expression],
     // Self type vs self path segment vs expression
     [$.self_type, $.path_segment],
-    // [$.self_type, $._expression, $.path_segment], -- resolved by precedence
+    [$.self_type, $._expression, $.path_segment],
     // recv arm pattern
     [$.recv_arm_pattern],
     // _condition variants use the same terminals as expressions.
@@ -73,7 +78,10 @@ module.exports = grammar({
   ],
 
   rules: {
-    source_file: $ => repeat(choice($._item, $._statement)),
+    // A statement at the top level is read as one only when nothing else
+    // reads its tokens, so a block after a function reads as the function's
+    // body or a braced `where` condition first.
+    source_file: $ => repeat(choice($._item, prec.dynamic(-1, $._statement))),
 
     // Statement terminator: either an explicit ';' or an automatic one
     // inserted by the external scanner at newline boundaries.
@@ -152,6 +160,13 @@ module.exports = grammar({
 
     // Function definition: fn name<T>(params) -> Type uses (...) where ... { body }
     function_definition: $ => prec.right(seq(
+      $._function_signature,
+      // A block that could be the body or a braced `where` condition after a
+      // `,` is the body, as the compiler's parser reads it.
+      optional(field('body', prec.dynamic(1, $.block))),
+    )),
+
+    _function_signature: $ => seq(
       optional($.attribute_list),
       optional($.visibility),
       optional('unsafe'),
@@ -163,8 +178,7 @@ module.exports = grammar({
       optional(seq('->', field('return_type', $._type))),
       optional($.uses_clause),
       optional($.where_clause),
-      optional(field('body', $.block)),
-    )),
+    ),
 
     parameter_list: $ => seq(
       '(',
@@ -482,7 +496,9 @@ module.exports = grammar({
       optional($.attribute_list),
       'extern',
       '{',
-      repeat($.function_definition),
+      // An extern function has no body, so a block in its `where` clause is
+      // always a condition.
+      repeat(alias($._function_signature, $.function_definition)),
       '}',
     ),
 
@@ -551,17 +567,21 @@ module.exports = grammar({
       field('type', $._type),
     )),
 
-    where_clause: $ => prec.right(seq(
+    where_clause: $ => seq(
       'where',
-      sep1($.where_predicate, ','),
+      sep1(choice($.where_predicate, $.where_const_predicate), ','),
       optional(','),
-    )),
+    ),
 
     where_predicate: $ => seq(
       $._type,
       ':',
       $.type_bound_list,
     ),
+
+    // A const condition reads an expression the way an `if` condition does,
+    // without a record literal, whose `{` would be the item's.
+    where_const_predicate: $ => $._condition_no_let,
 
     // ==================== TYPES ====================
 

@@ -310,6 +310,44 @@ static bool scan_qualified_path_after_lshift(TSLexer *lexer) {
   return false;
 }
 
+// Whether what follows the `>` that would close an expression path's generic
+// arguments lets that path end there. It does not when it starts an operand
+// and can never continue an expression after one, as the `0` in
+// `N < 8, M > 0`, or when it is the `=` of a `>=`, as in `N < 8, M >= 1`: the
+// `<` and `>` are comparisons then. This mirrors `cannot_follow_path_expr` in
+// the compiler's parser (`crates/parser/src/parser/path.rs`). The caller has
+// consumed the `>`; this only looks ahead on the same line.
+static bool can_follow_generic_path_expr(TSLexer *lexer) {
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    advance(lexer);
+  }
+  int32_t c = lexer->lookahead;
+  if (c == '=') {
+    advance(lexer);
+    // `=>` ends a match arm pattern; any other `=` makes a `>=`.
+    return lexer->lookahead == '>';
+  }
+  if (c == '!') {
+    advance(lexer);
+    return lexer->lookahead == '=';
+  }
+  if (c == '~' || c == '"' || (c >= '0' && c <= '9')) return false;
+  if (c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
+    // A word: only `as` continues an expression, as a cast.
+    char word[3];
+    int len = 0;
+    while (lexer->lookahead == '_' || (lexer->lookahead >= 'a' && lexer->lookahead <= 'z') ||
+           (lexer->lookahead >= 'A' && lexer->lookahead <= 'Z') ||
+           (lexer->lookahead >= '0' && lexer->lookahead <= '9')) {
+      if (len < 3) word[len] = (char)lexer->lookahead;
+      len++;
+      advance(lexer);
+    }
+    return len == 2 && word[0] == 'a' && word[1] == 's';
+  }
+  return true;
+}
+
 bool tree_sitter_fe_external_scanner_scan(void *payload, TSLexer *lexer,
                                           const bool *valid_symbols) {
   (void)payload;
@@ -478,7 +516,14 @@ bool tree_sitter_fe_external_scanner_scan(void *payload, TSLexer *lexer,
             case '>':
               if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0) {
                 angle_depth--;
-                if (angle_depth == 0) { is_generic = true; goto done_scanning; }
+                if (angle_depth == 0) {
+                  // In an expression both are valid, so apply the compiler's
+                  // rule: what follows the '>' must be able to follow a path.
+                  advance(lexer);
+                  is_generic = !valid_symbols[COMPARISON_LT] ||
+                               can_follow_generic_path_expr(lexer);
+                  goto done_scanning;
+                }
               }
               advance(lexer);
               continue;
