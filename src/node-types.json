@@ -2738,7 +2738,7 @@
     "fields": {
       "name": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "_",
@@ -2746,6 +2746,24 @@
           },
           {
             "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "pattern": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "path_tuple_pattern",
+            "named": true
+          },
+          {
+            "type": "record_pattern",
+            "named": true
+          },
+          {
+            "type": "tuple_pattern",
             "named": true
           }
         ]
@@ -7711,6 +7729,24 @@
           }
         ]
       },
+      "pattern": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "path_tuple_pattern",
+            "named": true
+          },
+          {
+            "type": "record_pattern",
+            "named": true
+          },
+          {
+            "type": "tuple_pattern",
+            "named": true
+          }
+        ]
+      },
       "type": {
         "multiple": false,
         "required": false,
@@ -7901,6 +7937,10 @@
         {
           "type": "path",
           "named": true
+        },
+        {
+          "type": "qualified_path_type",
+          "named": true
         }
       ]
     }
@@ -7923,7 +7963,18 @@
   {
     "type": "path_tuple_pattern",
     "named": true,
-    "fields": {},
+    "fields": {
+      "type_arguments": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_arg_list",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": true,
@@ -7934,6 +7985,10 @@
         },
         {
           "type": "path",
+          "named": true
+        },
+        {
+          "type": "qualified_path_type",
           "named": true
         }
       ]
@@ -8590,13 +8645,28 @@
   {
     "type": "record_pattern",
     "named": true,
-    "fields": {},
+    "fields": {
+      "type_arguments": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_arg_list",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": true,
       "types": [
         {
           "type": "path",
+          "named": true
+        },
+        {
+          "type": "qualified_path_type",
           "named": true
         },
         {
