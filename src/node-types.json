@@ -1040,6 +1040,16 @@
     "type": "assoc_type_generic_arg",
     "named": true,
     "fields": {
+      "mode": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "generic_arg_list",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -4797,6 +4807,10 @@
         "required": false,
         "types": [
           {
+            "type": "_",
+            "named": false
+          },
+          {
             "type": "_type",
             "named": true
           }
@@ -5053,6 +5067,10 @@
         {
           "type": "literal",
           "named": true
+        },
+        {
+          "type": "mode_generic_arg",
+          "named": true
         }
       ]
     }
@@ -5067,6 +5085,10 @@
       "types": [
         {
           "type": "const_generic_param",
+          "named": true
+        },
+        {
+          "type": "shape_generic_param",
           "named": true
         },
         {
@@ -7536,6 +7558,11 @@
     }
   },
   {
+    "type": "mode_generic_arg",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "mode_type",
     "named": true,
     "fields": {
@@ -9074,6 +9101,22 @@
     "fields": {}
   },
   {
+    "type": "shape_generic_param",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "source_file",
     "named": true,
     "root": true,
@@ -9418,6 +9461,10 @@
           "named": true
         },
         {
+          "type": "trait_shape_item",
+          "named": true
+        },
+        {
           "type": "trait_type_item",
           "named": true
         },
@@ -9446,6 +9493,36 @@
         },
         {
           "type": "path",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "trait_shape_item",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "_type",
+          "named": true
+        },
+        {
+          "type": "attribute_list",
           "named": true
         }
       ]
@@ -11393,6 +11470,10 @@
   },
   {
     "type": "self",
+    "named": false
+  },
+  {
+    "type": "shape",
     "named": false
   },
   {
