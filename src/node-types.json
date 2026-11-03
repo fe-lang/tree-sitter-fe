@@ -1103,6 +1103,10 @@
             "named": true
           },
           {
+            "type": "byte_literal",
+            "named": true
+          },
+          {
             "type": "identifier",
             "named": true
           },
@@ -1180,6 +1184,10 @@
           },
           {
             "type": "boolean_literal",
+            "named": true
+          },
+          {
+            "type": "byte_literal",
             "named": true
           },
           {
@@ -5859,6 +5867,81 @@
     }
   },
   {
+    "type": "inner_attribute",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "path",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "attribute_call_expression",
+            "named": true
+          },
+          {
+            "type": "boolean_literal",
+            "named": true
+          },
+          {
+            "type": "byte_literal",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "integer_literal",
+            "named": true
+          },
+          {
+            "type": "string_literal",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "attribute_arg_list",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "inner_attribute_list",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "inner_attribute",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "instantiation_expression",
     "named": true,
     "fields": {
@@ -6348,6 +6431,10 @@
           "named": true
         },
         {
+          "type": "byte_literal",
+          "named": true
+        },
+        {
           "type": "integer_literal",
           "named": true
         },
@@ -6368,6 +6455,10 @@
       "types": [
         {
           "type": "boolean_literal",
+          "named": true
+        },
+        {
+          "type": "byte_literal",
           "named": true
         },
         {
@@ -7382,6 +7473,10 @@
         },
         {
           "type": "attribute_list",
+          "named": true
+        },
+        {
+          "type": "inner_attribute_list",
           "named": true
         },
         {
@@ -9131,6 +9226,10 @@
         },
         {
           "type": "_statement",
+          "named": true
+        },
+        {
+          "type": "inner_attribute_list",
           "named": true
         }
       ]
@@ -11173,6 +11272,10 @@
     "named": false
   },
   {
+    "type": "#!",
+    "named": false
+  },
+  {
     "type": "%",
     "named": false
   },
@@ -11347,6 +11450,10 @@
   {
     "type": "break",
     "named": false
+  },
+  {
+    "type": "byte_literal",
+    "named": true
   },
   {
     "type": "const",
