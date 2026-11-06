@@ -140,6 +140,10 @@
         "named": true
       },
       {
+        "type": "loop_statement",
+        "named": true
+      },
+      {
         "type": "return_statement",
         "named": true
       },
@@ -6473,6 +6477,22 @@
     }
   },
   {
+    "type": "loop_statement",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "macro_call_expression",
     "named": true,
     "fields": {
@@ -11534,6 +11554,10 @@
   {
     "type": "line_comment",
     "named": true
+  },
+  {
+    "type": "loop",
+    "named": false
   },
   {
     "type": "match",
