@@ -5077,6 +5077,10 @@
           "named": true
         },
         {
+          "type": "infer_generic_arg",
+          "named": true
+        },
+        {
           "type": "literal",
           "named": true
         },
@@ -5869,6 +5873,11 @@
         ]
       }
     }
+  },
+  {
+    "type": "infer_generic_arg",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "inner_attribute",

@@ -3678,6 +3678,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "infer_generic_arg"
+        },
+        {
+          "type": "SYMBOL",
           "name": "_type"
         },
         {
@@ -3702,6 +3706,10 @@
           "value": "mut"
         }
       ]
+    },
+    "infer_generic_arg": {
+      "type": "STRING",
+      "value": "_"
     },
     "assoc_type_generic_arg": {
       "type": "SEQ",
