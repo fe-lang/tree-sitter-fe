@@ -618,6 +618,10 @@
           ]
         },
         {
+          "type": "STRING",
+          "value": "..."
+        },
+        {
           "type": "SEQ",
           "members": [
             {
